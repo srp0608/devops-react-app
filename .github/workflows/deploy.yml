@@ -1,14 +1,54 @@
-- name: Setup gcloud
-  uses: google-github-actions/setup-gcloud@v2
+name: Deploy to GKE
 
-- name: Install GKE auth plugin
-  run: |
-    gcloud components install gke-gcloud-auth-plugin --quiet
+on:
+  push:
+    branches:
+      - main
 
-- name: Get GKE Credentials
-  run: |
-    gcloud container clusters get-credentials devops-cluster --zone asia-east1-b
+env:
+  PROJECT_ID: devops-react-app
+  REGION: asia-south1
+  REPO: devops-repo
+  IMAGE: react-app
+  CLUSTER: devops-cluster
+  ZONE: asia-east1-b
 
-- name: Deploy to Kubernetes
-  run: |
-    kubectl set image deployment/react-app react-app=asia-south1-docker.pkg.dev/devops-react-app/devops-repo/react-app:latest
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_KEY }}
+
+    - name: Set up gcloud
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Install GKE auth plugin
+      run: |
+        gcloud components install gke-gcloud-auth-plugin --quiet
+
+    - name: Configure Docker
+      run: |
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest .
+
+    - name: Push Docker image
+      run: |
+        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
+
+    - name: Get GKE credentials
+      run: |
+        gcloud container clusters get-credentials ${{ env.CLUSTER }} --zone ${{ env.ZONE }}
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl set image deployment/react-app react-app=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
